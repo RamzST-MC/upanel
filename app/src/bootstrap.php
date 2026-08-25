@@ -8,6 +8,7 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
 date_default_timezone_set('UTC');
 
 define('APP_ROOT', dirname(__DIR__));
+define('REPO_ROOT', dirname(APP_ROOT)); // корень git-репозитория (родитель app/)
 define('DATA_DIR', APP_ROOT . '/data');
 define('DB_FILE', DATA_DIR . '/panel.sqlite');
 define('SITES_ROOT', '/var/www');

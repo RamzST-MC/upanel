@@ -27,10 +27,14 @@
 ## Установка
 
 ```bash
-# скачайте/скопируйте всю папку на сервер, затем:
+git clone https://github.com/RamzST-MC/upanel.git
 cd upanel
 sudo bash install.sh --admin-user admin --admin-pass 'СложныйПароль123!' --port 9999
 ```
+
+Скрипт сам разворачивает свою копию как git-репозиторий в `/var/www/upanel`
+(не важно, запущен ли он из уже склонированной папки или скачан отдельно) —
+это нужно для работы кнопки «Проверка обновлений» в панели.
 
 Опции:
 
@@ -40,8 +44,26 @@ sudo bash install.sh --admin-user admin --admin-pass 'СложныйПароль
 - `--with-mail` — установить и настроить Postfix + Dovecot + SpamAssassin + ClamAV
 - `--with-dns` — установить bind9 для DNS-зон
 - `--php-version <ver>` — версия PHP для FPM-сокета панели (по умолчанию — системная)
+- `--repo <url>` — свой форк/репозиторий (по умолчанию `https://github.com/RamzST-MC/upanel.git`)
+- `--branch <name>` — ветка репозитория
 
 После установки скрипт выведет адрес панели, логин и пароль.
+
+## Обновление
+
+В разделе «Управление» → «Обновление» есть кнопка **«Проверить обновление»**
+(делает `git fetch` и показывает, на сколько коммитов панель отстала от
+репозитория) и кнопка **«Обновить сейчас»** (делает `git pull --ff-only` и
+переустанавливает права владения файлами). Работает только если панель была
+установлена через `install.sh` (т.е. `/var/www/upanel` — git-репозиторий).
+
+Обновить также можно вручную:
+
+```bash
+sudo bash install.sh   # повторный запуск на уже установленной панели = git pull
+# или напрямую:
+cd /var/www/upanel && sudo -u www-data git pull --ff-only
+```
 
 ## ⚠️ Безопасность — обязательно прочитать
 
@@ -83,7 +105,7 @@ upanel/
 ## Сброс пароля администратора
 
 ```bash
-sudo -u www-data php /var/www/upanel/bin/create_admin.php admin НовыйПароль123
+sudo -u www-data php /var/www/upanel/app/bin/create_admin.php admin НовыйПароль123
 ```
 
 ## Дальнейшее развитие

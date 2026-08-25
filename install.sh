@@ -9,6 +9,8 @@
 #   --with-mail          установить Postfix + Dovecot + SpamAssassin + ClamAV
 #   --with-dns            установить bind9
 #   --php-version <ver>   версия PHP по умолчанию (по умолчанию системная из apt)
+#   --repo <url>          git-репозиторий панели (по умолчанию https://github.com/RamzST-MC/upanel.git)
+#   --branch <name>       ветка репозитория (по умолчанию — ветка по умолчанию в репозитории)
 #
 set -e
 
@@ -20,6 +22,8 @@ ADMIN_PASS=""
 WITH_MAIL=0
 WITH_DNS=0
 PHP_VER=""
+REPO_URL="https://github.com/RamzST-MC/upanel.git"
+REPO_BRANCH=""
 
 color() { printf "\033[1;36m%s\033[0m\n" "$1"; }
 err()   { printf "\033[1;31m%s\033[0m\n" "$1" >&2; }
@@ -32,6 +36,8 @@ while [[ $# -gt 0 ]]; do
     --with-mail) WITH_MAIL=1; shift ;;
     --with-dns) WITH_DNS=1; shift ;;
     --php-version) PHP_VER="$2"; shift 2 ;;
+    --repo) REPO_URL="$2"; shift 2 ;;
+    --branch) REPO_BRANCH="$2"; shift 2 ;;
     *) err "Неизвестный аргумент: $1"; exit 1 ;;
   esac
 done
@@ -96,17 +102,30 @@ if [[ "$WITH_DNS" -eq 1 ]]; then
   systemctl enable --now bind9 || systemctl enable --now named || true
 fi
 
-# --- Копирование файлов панели ---
-color "==> Установка файлов панели в ${PANEL_DIR}"
-mkdir -p "$PANEL_DIR"
-cp -r "${SCRIPT_DIR}/app/"* "$PANEL_DIR/"
-mkdir -p "${PANEL_DIR}/data" "/var/backups/panel"
+# --- Установка/обновление файлов панели через git ---
+color "==> Установка файлов панели из ${REPO_URL} в ${PANEL_DIR}"
+if [[ -d "${PANEL_DIR}/.git" ]]; then
+  color "    Панель уже установлена как git-репозиторий — обновляю (git pull)"
+  git -C "$PANEL_DIR" fetch --quiet
+  git -C "$PANEL_DIR" pull --ff-only --quiet
+elif [[ -d "${SCRIPT_DIR}/.git" ]]; then
+  color "    Запуск из локального git-клона — разворачиваю его в ${PANEL_DIR}"
+  rm -rf "$PANEL_DIR"
+  git clone --quiet "$SCRIPT_DIR" "$PANEL_DIR"
+  git -C "$PANEL_DIR" remote set-url origin "$REPO_URL"
+else
+  rm -rf "$PANEL_DIR"
+  mkdir -p "$(dirname "$PANEL_DIR")"
+  git clone --quiet ${REPO_BRANCH:+-b "$REPO_BRANCH"} "$REPO_URL" "$PANEL_DIR"
+fi
+
+mkdir -p "${PANEL_DIR}/app/data" "/var/backups/panel"
 chown -R www-data:www-data "$PANEL_DIR" "/var/backups/panel"
-chmod -R 750 "${PANEL_DIR}/data"
+chmod -R 750 "${PANEL_DIR}/app/data"
 
 # --- upanel-helper ---
 color "==> Установка root-хелпера"
-install -m 755 "${SCRIPT_DIR}/upanel-helper.sh" /usr/local/bin/upanel-helper
+install -m 755 "${PANEL_DIR}/upanel-helper.sh" /usr/local/bin/upanel-helper
 
 # --- sudoers: точечные права для www-data ---
 color "==> Настройка sudo-прав для www-data"
@@ -121,6 +140,7 @@ www-data ALL=(root) NOPASSWD: /usr/sbin/useradd *, /usr/sbin/userdel *, /usr/bin
 www-data ALL=(root) NOPASSWD: /usr/bin/crontab *
 www-data ALL=(root) NOPASSWD: /usr/bin/kill *
 www-data ALL=(root) NOPASSWD: /bin/mkdir *, /bin/rm *, /bin/cp *
+www-data ALL=(root) NOPASSWD: /bin/chown *
 www-data ALL=(root) NOPASSWD: /usr/bin/apt-get *, /usr/bin/add-apt-repository *
 EOF
 chmod 440 /etc/sudoers.d/upanel
@@ -132,7 +152,7 @@ cat > /etc/nginx/sites-available/upanel.conf <<EOF
 server {
     listen ${PANEL_PORT};
     server_name _;
-    root ${PANEL_DIR}/public;
+    root ${PANEL_DIR}/app/public;
     index index.php;
 
     location / {
@@ -164,7 +184,7 @@ ufw --force enable || true
 
 # --- Инициализация БД панели и админ-пользователя ---
 color "==> Создание администратора панели"
-sudo -u www-data php "${PANEL_DIR}/bin/create_admin.php" "${ADMIN_USER}" "${ADMIN_PASS}"
+sudo -u www-data php "${PANEL_DIR}/app/bin/create_admin.php" "${ADMIN_USER}" "${ADMIN_PASS}"
 
 IP="$(hostname -I | awk '{print $1}')"
 

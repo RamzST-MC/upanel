@@ -21,7 +21,7 @@ if (!in_array($page, $public, true)) {
 }
 
 $allowed = [
-    'login', 'dashboard', 'accounts', 'services', 'sites', 'php', 'site_logs',
+    'login', 'dashboard', 'accounts', 'services', 'update', 'sites', 'php', 'site_logs',
     'database', 'mail', 'mail_accounts', 'dnsbl', 'dns', 'files', 'webshell',
     'cron', 'monitoring', 'sysinfo', 'processes', 'ssl', 'backups', 'firewall',
     'account',
