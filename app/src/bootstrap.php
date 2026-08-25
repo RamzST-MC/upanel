@@ -119,3 +119,16 @@ function log_action(string $action): void {
         $stmt->execute([$_SESSION['user'] ?? 'system', $action]);
     } catch (Throwable $e) { /* ignore */ }
 }
+
+/**
+ * Версия панели — читается из файла VERSION в корне репозитория.
+ * Чтобы выпустить новую версию: поменяйте содержимое VERSION, закоммитьте и запушьте.
+ */
+function panel_version(): string {
+    $file = REPO_ROOT . '/VERSION';
+    if (is_file($file)) {
+        $v = trim(file_get_contents($file));
+        if ($v !== '') return $v;
+    }
+    return 'dev';
+}

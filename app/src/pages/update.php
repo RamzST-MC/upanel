@@ -8,6 +8,7 @@ $isGitRepo = is_dir(REPO_ROOT . '/.git');
 $message = '';
 $diffLog = '';
 $behind = null;
+$remoteVersion = null;
 
 function git_run(string $args): array {
     return run('git -C ' . escapeshellarg(REPO_ROOT) . ' ' . $args . ' 2>&1');
@@ -22,6 +23,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isGitRepo) {
         [$log] = git_run("log --oneline HEAD..@{u}");
         $diffLog = trim($log);
         $behind = $diffLog === '' ? 0 : count(explode("\n", $diffLog));
+        [$branchNow] = git_run('rev-parse --abbrev-ref HEAD');
+        [$remoteVer, , $remoteVerCode] = git_run("show origin/" . trim($branchNow) . ":VERSION");
+        $remoteVersion = $remoteVerCode === 0 ? trim($remoteVer) : null;
         log_action('Проверка обновлений панели');
     }
 
@@ -57,6 +61,7 @@ if ($remoteCode !== 0) $remoteUrl = 'не настроен';
   <div class="card">
     <h2>Текущая версия</h2>
     <table>
+      <tr><th>Версия панели</th><td><strong><?= h(panel_version()) ?></strong></td></tr>
       <tr><th>Ветка</th><td><?= h(trim($branch)) ?></td></tr>
       <tr><th>Коммит</th><td><?= h(trim($currentCommit)) ?></td></tr>
       <tr><th>Репозиторий</th><td><?= h(trim($remoteUrl)) ?></td></tr>
@@ -73,9 +78,14 @@ if ($remoteCode !== 0) $remoteUrl = 'не настроен';
 
     <?php if ($behind !== null): ?>
       <?php if ($behind === 0): ?>
-        <p style="margin-top:14px;color:#166534">✅ Установлена последняя версия.</p>
+        <p style="margin-top:14px;color:#166534">✅ Установлена последняя версия (<?= h(panel_version()) ?>).</p>
       <?php else: ?>
-        <p style="margin-top:14px;color:#a15c00">⬇️ Доступно новых коммитов: <?= (int)$behind ?></p>
+        <p style="margin-top:14px;color:#a15c00">
+          ⬇️ Доступно новых коммитов: <?= (int)$behind ?>
+          <?php if ($remoteVersion && $remoteVersion !== panel_version()): ?>
+            — новая версия: <strong><?= h($remoteVersion) ?></strong> (сейчас <?= h(panel_version()) ?>)
+          <?php endif; ?>
+        </p>
         <pre class="term" style="height:auto;color:#ccc"><?= h($diffLog) ?></pre>
         <form method="post" onsubmit="return confirm('Обновить панель сейчас? (git pull)')">
           <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">

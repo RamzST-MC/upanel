@@ -42,6 +42,7 @@ $diskUsedPct = $diskTotal ? round((1 - $disk / $diskTotal) * 100) : 0;
                 </a>
             <?php endforeach; ?>
         <?php endforeach; ?>
+        <div class="sidebar-footer">UPanel v<?= h(panel_version()) ?></div>
     </nav>
     <?php endif; ?>
     <main class="content">
