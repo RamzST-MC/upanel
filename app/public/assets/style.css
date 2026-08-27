@@ -80,3 +80,19 @@ label{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
 .stat .lbl{font-size:12px;color:var(--muted)}
 
 pre.term{background:#111;color:#0f0;padding:14px;border-radius:6px;height:400px;overflow:auto;font-size:13px}
+
+.tab-buttons{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.tab-btn{
+  background:none;border:none;padding:10px 16px;font-size:13.5px;cursor:pointer;
+  color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+.changelog h3{margin:18px 0 6px;font-size:14px}
+.changelog h3:first-child{margin-top:0}
+.changelog ul{margin:0 0 10px;padding-left:20px}
+.changelog li{font-size:13.5px;margin-bottom:4px;color:#444}
+.changelog p{font-size:13.5px;color:#444}
