@@ -12,6 +12,38 @@ function ftp_valid_user(string $u): string {
     return preg_replace('/[^a-z0-9_.\-]/i', '', $u);
 }
 
+/**
+ * Bash-сниппет, приводящий конфиг vsftpd и файрвол в рабочее состояние.
+ * Используется и при установке (в фоновом скрипте), и при "Исправить сеть",
+ * и теперь при каждом создании FTP-аккаунта — чтобы не зависеть от того,
+ * был ли этот шаг выполнен раньше вручную. Идемпотентен.
+ *
+ * check_shell=NO убирает частую причину "530 Login incorrect" (vsftpd по
+ * умолчанию требует, чтобы shell пользователя — у нас /usr/sbin/nologin —
+ * был явно перечислен в /etc/shells).
+ */
+function ftp_vsftpd_config_snippet(string $userConfDir): string {
+    $pasvMin = 30000;
+    $pasvMax = 30100;
+    return "test -f /etc/vsftpd.conf || exit 0; "
+        . "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
+        . "grep -q '^/usr/sbin/nologin$' /etc/shells || echo /usr/sbin/nologin >> /etc/shells; "
+        . "mkdir -p " . escapeshellarg($userConfDir) . "; "
+        . "sed -i '/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d;/^local_enable=/d;/^check_shell=/d;/^pam_service_name=/d;/^user_config_dir=/d;/^chroot_local_user=/d;/^allow_writeable_chroot=/d;/^write_enable=/d' /etc/vsftpd.conf; "
+        . "printf '%s\\n' 'local_enable=YES' 'check_shell=NO' 'pam_service_name=vsftpd' "
+        . "'chroot_local_user=YES' 'allow_writeable_chroot=YES' 'write_enable=YES' "
+        . "'pasv_enable=YES' 'pasv_min_port={$pasvMin}' 'pasv_max_port={$pasvMax}' "
+        . "'user_config_dir=" . $userConfDir . "' >> /etc/vsftpd.conf; "
+        . "(ufw allow 21/tcp; ufw allow {$pasvMin}:{$pasvMax}/tcp; ufw reload) 2>&1 || true; ";
+}
+
+/** Синхронно применяет сниппет выше через root-хелпер (для create/fix_network). */
+function ftp_ensure_vsftpd_sane(string $userConfDir, bool $restart = true): void {
+    $script = ftp_vsftpd_config_snippet($userConfDir)
+        . ($restart ? "systemctl restart vsftpd 2>&1 || true; " : "");
+    run('sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($script) . ' 2>&1');
+}
+
 // ------------------------------------------------------------------
 // AJAX: статус фоновой установки vsftpd
 // ------------------------------------------------------------------
@@ -41,21 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --- Установка vsftpd в фоне (см. mail.php — тот же приём) ---
     if ($action === 'install_start') {
         if (!is_dir($logDir)) mkdir($logDir, 0750, true);
-        $pasvMin = 30000;
-        $pasvMax = 30100;
+        $configSnippet = ftp_vsftpd_config_snippet($userConfDir);
         $rootScript = "export DEBIAN_FRONTEND=noninteractive; "
             . "echo '=== " . date('Y-m-d H:i:s') . " ==='; "
             . "echo '\$ apt-get install -y vsftpd'; apt-get install -y vsftpd; code=\$?; "
-            . "mkdir -p " . escapeshellarg($userConfDir) . "; "
-            . "grep -q '^/usr/sbin/nologin$' /etc/shells || echo /usr/sbin/nologin >> /etc/shells; "
-            . "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
-            . "sed -i '/^user_config_dir=/d;/^chroot_local_user=/d;/^allow_writeable_chroot=/d;/^write_enable=/d;/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d;/^local_enable=/d;/^check_shell=/d;/^pam_service_name=/d' /etc/vsftpd.conf; "
-            . "printf '%s\\n' 'local_enable=YES' 'check_shell=NO' 'pam_service_name=vsftpd' "
-            . "'chroot_local_user=YES' 'allow_writeable_chroot=YES' 'write_enable=YES' "
-            . "'pasv_enable=YES' 'pasv_min_port={$pasvMin}' 'pasv_max_port={$pasvMax}' "
-            . "'user_config_dir=" . $userConfDir . "' >> /etc/vsftpd.conf; "
-            . "echo '\$ ufw allow 21/tcp, {$pasvMin}:{$pasvMax}/tcp'; "
-            . "(ufw allow 21/tcp; ufw allow {$pasvMin}:{$pasvMax}/tcp; ufw reload) 2>&1 || true; "
+            . "echo '\$ настройка vsftpd.conf, UFW, /etc/shells'; " . $configSnippet
             . "echo '\$ systemctl enable --now vsftpd'; systemctl enable --now vsftpd; "
             . "echo '{$DONE_MARKER}'\$code";
         $privCmd = 'sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($rootScript);
@@ -74,25 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // --- Патч сети/авторизации для уже установленного vsftpd.
-    // Нужно, если сервер ставился до появления этих настроек:
-    // 1) UFW блокирует порт 21 и passive-диапазон — недоступно снаружи (иногда и локально);
-    // 2) check_shell=YES (значение по умолчанию) требует, чтобы шелл пользователя
-    //    (/usr/sbin/nologin) был в /etc/shells — иначе vsftpd отвечает
-    //    "530 Login incorrect" даже при правильном пароле. Отключаем эту проверку.
+    // --- Патч сети/авторизации для уже установленного vsftpd (см.
+    // ftp_ensure_vsftpd_sane) — на случай если сервер ставился раньше,
+    // до появления этих настроек, или их нужно применить принудительно.
     if ($action === 'fix_network') {
-        $pasvMin = 30000;
-        $pasvMax = 30100;
-        $script = "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
-            . "grep -q '^/usr/sbin/nologin$' /etc/shells || echo /usr/sbin/nologin >> /etc/shells; "
-            . "sed -i '/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d;/^local_enable=/d;/^check_shell=/d;/^pam_service_name=/d' /etc/vsftpd.conf; "
-            . "printf '%s\\n' 'local_enable=YES' 'check_shell=NO' 'pam_service_name=vsftpd' "
-            . "'pasv_enable=YES' 'pasv_min_port={$pasvMin}' 'pasv_max_port={$pasvMax}' >> /etc/vsftpd.conf; "
-            . "(ufw allow 21/tcp; ufw allow {$pasvMin}:{$pasvMax}/tcp; ufw reload) 2>&1; "
-            . "systemctl restart vsftpd; ufw status 2>&1";
-        [$out] = run('sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($script) . ' 2>&1');
+        ftp_ensure_vsftpd_sane($userConfDir, true);
         log_action('Исправлены сетевые настройки vsftpd (passive mode + UFW + check_shell)');
-        flash("Настройки применены: открыты порты 21 и {$pasvMin}-{$pasvMax}/tcp, включён passive-режим, отключена проверка shell, служба перезапущена.");
+        flash('Настройки применены: открыты порты 21 и 30000-30100/tcp, включён passive-режим, отключена проверка shell, служба перезапущена.');
         header('Location: /?page=ftp');
         exit;
     }
@@ -116,6 +126,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             run('echo ' . escapeshellarg($user . ':' . $pass) . ' | sudo chpasswd');
             run('sudo chown -R ' . escapeshellarg($user) . ':' . escapeshellarg($user) . ' ' . escapeshellarg($home));
             run('sudo chmod 750 ' . escapeshellarg($home));
+
+            // На случай если vsftpd ставился до появления этих настроек (или
+            // кто-то их сбросил) — подстраховываемся при каждом создании
+            // аккаунта, а не только при установке/ручном "Исправить сеть".
+            ftp_ensure_vsftpd_sane($userConfDir, true);
 
             if ($readonly) {
                 run('sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg(
