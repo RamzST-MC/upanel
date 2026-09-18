@@ -172,6 +172,20 @@ foreach ($accounts as &$a) {
     $a['used_mb'] = (int)trim($duOut);
 }
 unset($a);
+
+// IP и порт для подключения FTP-клиентом
+[$pubIpOut] = run('curl -s --max-time 2 https://api.ipify.org 2>/dev/null');
+$serverIp = trim($pubIpOut);
+if ($serverIp === '' || !filter_var($serverIp, FILTER_VALIDATE_IP)) {
+    [$localIpOut] = run("hostname -I 2>/dev/null | awk '{print \$1}'");
+    $serverIp = trim($localIpOut) ?: '—';
+}
+$ftpPort = 21;
+if ($vsftpdInstalled) {
+    [$portOut] = run("grep -E '^listen_port=' /etc/vsftpd.conf 2>/dev/null | cut -d= -f2");
+    $portOut = trim($portOut);
+    if ($portOut !== '' && ctype_digit($portOut)) $ftpPort = (int)$portOut;
+}
 ?>
 <h1>FTP-аккаунты</h1>
 
@@ -237,6 +251,11 @@ unset($a);
 
 <div class="card">
   <h2>ФТП аккаунты</h2>
+  <p style="color:var(--muted)">
+    🔌 Подключение: <strong><?= h($serverIp) ?></strong>, порт <strong><?= (int)$ftpPort ?></strong>
+    — <code>ftp://<?= h($serverIp) ?>:<?= (int)$ftpPort ?></code>
+    <?php if (!$vsftpdInstalled): ?><br><span style="color:#a15c00">FTP-сервер ещё не установлен — подключение будет недоступно.</span><?php endif; ?>
+  </p>
   <table>
     <tr><th>Логин</th><th>Домашняя папка</th><th>Использовано / Квота</th><th>Только чтение</th><th>Действия</th></tr>
     <?php foreach ($accounts as $a): $u = h($a['username']); ?>
