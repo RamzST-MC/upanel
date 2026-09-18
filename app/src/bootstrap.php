@@ -162,7 +162,7 @@ function panel_update_refresh(): array {
     return $result;
 }
 
-function panel_update_status(int $ttl = 300): array {
+function panel_update_status(int $ttl = 60): array {
     $file = panel_update_cache_file();
     if (is_file($file)) {
         $data = json_decode((string)file_get_contents($file), true);
@@ -171,4 +171,37 @@ function panel_update_status(int $ttl = 300): array {
         }
     }
     return panel_update_refresh();
+}
+
+/**
+ * Автопроверка обновлений через системный cron (root-crontab, задание
+ * выполняется от имени www-data). Включение/выключение — тумблер на
+ * странице "Обновление".
+ */
+define('PANEL_AUTO_UPDATE_MARKER', '# upanel-auto-update-check');
+
+function panel_auto_update_cron_line(): string {
+    [$phpPath] = run('command -v php 2>/dev/null');
+    $phpPath = trim($phpPath) ?: '/usr/bin/php';
+    $script = APP_ROOT . '/bin/check_update.php';
+    return '* * * * * sudo -u www-data ' . escapeshellarg($phpPath) . ' ' . escapeshellarg($script)
+        . ' >/dev/null 2>&1 ' . PANEL_AUTO_UPDATE_MARKER;
+}
+
+function panel_auto_update_enabled(): bool {
+    [$cur] = run('sudo crontab -l 2>/dev/null');
+    return str_contains((string)$cur, PANEL_AUTO_UPDATE_MARKER);
+}
+
+function panel_auto_update_set(bool $enabled): void {
+    [$cur] = run('sudo crontab -l 2>/dev/null');
+    $lines = $cur ? explode("\n", rtrim($cur, "\n")) : [];
+    $lines = array_values(array_filter($lines, fn($l) => !str_contains($l, PANEL_AUTO_UPDATE_MARKER)));
+    if ($enabled) {
+        $lines[] = panel_auto_update_cron_line();
+    }
+    $tmp = tempnam(sys_get_temp_dir(), 'cron');
+    file_put_contents($tmp, implode("\n", array_filter($lines)) . "\n");
+    run('sudo crontab ' . escapeshellarg($tmp));
+    unlink($tmp);
 }

@@ -39,12 +39,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isGitRepo) {
         header('Location: /?page=update');
         exit;
     }
+
+    if ($action === 'auto_update_on') {
+        panel_auto_update_set(true);
+        log_action('Включена автопроверка обновлений панели');
+        flash('Автопроверка обновлений включена (каждый час)');
+        header('Location: /?page=update');
+        exit;
+    }
+
+    if ($action === 'auto_update_off') {
+        panel_auto_update_set(false);
+        log_action('Отключена автопроверка обновлений панели');
+        flash('Автопроверка обновлений отключена');
+        header('Location: /?page=update');
+        exit;
+    }
 }
 
 [$currentCommit] = $isGitRepo ? git_run("log -1 --format='%h  %ci  %s'") : ['—'];
 [$branch] = $isGitRepo ? git_run('rev-parse --abbrev-ref HEAD') : ['—'];
 [$remoteUrl, , $remoteCode] = $isGitRepo ? git_run('remote get-url origin') : ['—', '', 1];
 if ($remoteCode !== 0) $remoteUrl = 'не настроен';
+$autoUpdateEnabled = $isGitRepo && panel_auto_update_enabled();
 
 // Простой рендер CHANGELOG.md: "## " -> заголовок версии, "- " -> пункт списка
 $changelogFile = REPO_ROOT . '/CHANGELOG.md';
@@ -121,6 +138,28 @@ if (is_file($changelogFile)) {
             </form>
           <?php endif; ?>
         <?php endif; ?>
+      </div>
+
+      <div class="card">
+        <h2>Автопроверка обновлений</h2>
+        <p style="color:var(--muted)">
+          Каждую минуту панель будет сама выполнять <code>git fetch</code> в фоне (через cron, от имени www-data)
+          и обновлять статус на Дашборде — не нужно открывать эту страницу вручную.
+        </p>
+        <p>
+          <span class="status-dot <?= $autoUpdateEnabled ? 'status-on' : 'status-off' ?>"></span>
+          Статус: <strong><?= $autoUpdateEnabled ? 'включена' : 'отключена' ?></strong>
+        </p>
+        <form method="post">
+          <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+          <?php if ($autoUpdateEnabled): ?>
+            <input type="hidden" name="action" value="auto_update_off">
+            <button class="btn danger" type="submit">Отключить автопроверку</button>
+          <?php else: ?>
+            <input type="hidden" name="action" value="auto_update_on">
+            <button class="btn" type="submit">Включить автопроверку (каждую минуту)</button>
+          <?php endif; ?>
+        </form>
       </div>
     <?php endif; ?>
   </div>
