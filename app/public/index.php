@@ -24,7 +24,7 @@ $allowed = [
     'login', 'dashboard', 'accounts', 'services', 'update', 'sites', 'php', 'site_logs',
     'database', 'mail', 'mail_accounts', 'dnsbl', 'dns', 'files', 'webshell',
     'cron', 'monitoring', 'sysinfo', 'processes', 'ssl', 'backups', 'firewall',
-    'account',
+    'account', 'ftp',
 ];
 if (!in_array($page, $allowed, true)) {
     $page = 'dashboard';

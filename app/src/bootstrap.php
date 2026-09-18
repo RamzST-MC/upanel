@@ -111,6 +111,14 @@ function init_db(): void {
         action TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ftp_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        home_dir TEXT NOT NULL,
+        quota_mb INTEGER DEFAULT 0,
+        readonly INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )");
 }
 
 function log_action(string $action): void {

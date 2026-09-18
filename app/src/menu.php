@@ -24,6 +24,9 @@ function menu_structure(): array {
             ['Почтовые аккаунты', 'mail_accounts', '📧'],
             ['Черные списки (DNSBL)', 'dnsbl', '🚫'],
         ],
+        'FTP' => [
+            ['FTP-аккаунты', 'ftp', '📂'],
+        ],
         'Сервер имён' => [
             ['DNS зоны', 'dns', '🧭'],
         ],

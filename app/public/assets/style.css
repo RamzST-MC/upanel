@@ -96,6 +96,12 @@ label{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
   to{background-position:32px 0}
 }
 
+.pw-strength-outer{width:100%;max-width:280px;height:5px;border-radius:3px;background:#e9edf3;margin:6px 0 12px;overflow:hidden}
+.pw-strength-inner{height:100%;width:0;background:#e5484d;transition:width .2s,background .2s}
+
+.ftp-inline-panel{background:#f7f9fc;border:1px solid #e5e9f0;border-radius:8px;padding:12px 14px}
+.ftp-panel-row td{border-top:none;padding-top:0}
+
 .login-wrap{display:flex;align-items:center;justify-content:center;height:100vh}
 .login-box{width:340px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:32px}
 .login-box h1{font-size:18px;margin-bottom:20px;text-align:center}
