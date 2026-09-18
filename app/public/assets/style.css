@@ -70,6 +70,14 @@ label{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
 .status-on{background:#22c55e}
 .status-off{background:#e5484d}
 
+.spinner{
+  display:inline-block;width:12px;height:12px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.5);border-top-color:#fff;
+  vertical-align:middle;margin-right:2px;animation:spin .7s linear infinite;
+}
+.btn:disabled{opacity:.75;cursor:progress}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 .login-wrap{display:flex;align-items:center;justify-content:center;height:100vh}
 .login-box{width:340px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:32px}
 .login-box h1{font-size:18px;margin-bottom:20px;text-align:center}
