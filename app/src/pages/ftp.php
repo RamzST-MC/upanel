@@ -162,6 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $vsftpdActive = trim($activeOut) === 'active';
 [$loadState] = run('systemctl show -p LoadState --value vsftpd 2>/dev/null');
 $vsftpdInstalled = trim($loadState) === 'loaded';
+[$vsftpdStatusOut] = $vsftpdInstalled ? run('systemctl status vsftpd --no-pager -l 2>&1') : ['', '', 0];
 
 $accounts = db()->query('SELECT * FROM ftp_accounts ORDER BY username')->fetchAll();
 foreach ($accounts as &$a) {
@@ -188,6 +189,8 @@ unset($a);
       <button class="btn secondary" name="action" value="restart">Рестарт</button>
       <button class="btn danger" name="action" value="stop">Стоп</button>
     </form>
+    <button type="button" class="btn secondary js-toggle" data-target="vsftpd-status" style="margin-left:8px">ℹ️ Статус</button>
+    <pre class="term" id="row-vsftpd-status" style="display:none;height:220px;margin-top:12px"><?= h(trim($vsftpdStatusOut)) ?></pre>
   <?php endif; ?>
 </div>
 
@@ -367,7 +370,8 @@ unset($a);
     btn.addEventListener('click', function () {
       var row = document.getElementById('row-' + btn.dataset.target);
       if (!row) return;
-      row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+      var shown = row.tagName === 'TR' ? 'table-row' : 'block';
+      row.style.display = row.style.display === 'none' ? shown : 'none';
     });
   });
 
