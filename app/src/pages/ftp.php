@@ -41,15 +41,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --- Установка vsftpd в фоне (см. mail.php — тот же приём) ---
     if ($action === 'install_start') {
         if (!is_dir($logDir)) mkdir($logDir, 0750, true);
+        $pasvMin = 30000;
+        $pasvMax = 30100;
         $rootScript = "export DEBIAN_FRONTEND=noninteractive; "
             . "echo '=== " . date('Y-m-d H:i:s') . " ==='; "
             . "echo '\$ apt-get install -y vsftpd'; apt-get install -y vsftpd; code=\$?; "
             . "mkdir -p " . escapeshellarg($userConfDir) . "; "
             . "grep -q '^/usr/sbin/nologin$' /etc/shells || echo /usr/sbin/nologin >> /etc/shells; "
             . "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
-            . "sed -i '/^user_config_dir=/d;/^chroot_local_user=/d;/^allow_writeable_chroot=/d;/^write_enable=/d' /etc/vsftpd.conf; "
+            . "sed -i '/^user_config_dir=/d;/^chroot_local_user=/d;/^allow_writeable_chroot=/d;/^write_enable=/d;/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d' /etc/vsftpd.conf; "
             . "printf '%s\\n' 'chroot_local_user=YES' 'allow_writeable_chroot=YES' 'write_enable=YES' "
+            . "'pasv_enable=YES' 'pasv_min_port={$pasvMin}' 'pasv_max_port={$pasvMax}' "
             . "'user_config_dir=" . $userConfDir . "' >> /etc/vsftpd.conf; "
+            . "echo '\$ ufw allow 21/tcp, {$pasvMin}:{$pasvMax}/tcp'; "
+            . "(ufw allow 21/tcp; ufw allow {$pasvMin}:{$pasvMax}/tcp; ufw reload) 2>&1 || true; "
             . "echo '\$ systemctl enable --now vsftpd'; systemctl enable --now vsftpd; "
             . "echo '{$DONE_MARKER}'\$code";
         $privCmd = 'sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($rootScript);
@@ -64,6 +69,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (in_array($action, ['start', 'stop', 'restart'], true)) {
         run('sudo systemctl ' . escapeshellarg($action) . ' vsftpd');
         flash("vsftpd: {$action}");
+        header('Location: /?page=ftp');
+        exit;
+    }
+
+    // --- Патч сети для уже установленного vsftpd: passive mode + порты в UFW.
+    // Нужно, если сервер ставился до появления этой настройки — иначе
+    // подключение снаружи (а иногда и из локальной сети, если UFW включён)
+    // не проходит: порт 21 и диапазон passive-портов закрыты файрволом.
+    if ($action === 'fix_network') {
+        $pasvMin = 30000;
+        $pasvMax = 30100;
+        $script = "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
+            . "sed -i '/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d' /etc/vsftpd.conf; "
+            . "printf '%s\\n' 'pasv_enable=YES' 'pasv_min_port={$pasvMin}' 'pasv_max_port={$pasvMax}' >> /etc/vsftpd.conf; "
+            . "(ufw allow 21/tcp; ufw allow {$pasvMin}:{$pasvMax}/tcp; ufw reload) 2>&1; "
+            . "systemctl restart vsftpd; ufw status 2>&1";
+        [$out] = run('sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($script) . ' 2>&1');
+        log_action('Исправлены сетевые настройки vsftpd (passive mode + UFW)');
+        flash("Настройки применены. Открыты порты 21 и {$pasvMin}-{$pasvMax}/tcp, включён passive-режим, служба перезапущена.");
         header('Location: /?page=ftp');
         exit;
     }
@@ -204,6 +228,11 @@ if ($vsftpdInstalled) {
       <button class="btn danger" name="action" value="stop">Стоп</button>
     </form>
     <button type="button" class="btn secondary js-toggle" data-target="vsftpd-status" style="margin-left:8px">ℹ️ Статус</button>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+      <input type="hidden" name="action" value="fix_network">
+      <button class="btn secondary" type="submit" title="Открыть порт 21 и passive-диапазон в UFW, включить passive mode">🔧 Исправить сеть</button>
+    </form>
     <pre class="term" id="row-vsftpd-status" style="display:none;height:220px;margin-top:12px"><?= h(trim($vsftpdStatusOut)) ?></pre>
   <?php endif; ?>
 </div>
