@@ -17,13 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isGitRepo) {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'check') {
-        git_run('fetch --quiet');
+        $status = panel_update_refresh();
         [$log] = git_run("log --oneline HEAD..@{u}");
         $diffLog = trim($log);
-        $behind = $diffLog === '' ? 0 : count(explode("\n", $diffLog));
-        [$branchNow] = git_run('rev-parse --abbrev-ref HEAD');
-        [$remoteVer, , $remoteVerCode] = git_run("show origin/" . trim($branchNow) . ":VERSION");
-        $remoteVersion = $remoteVerCode === 0 ? trim($remoteVer) : null;
+        $behind = $status['behind'];
+        $remoteVersion = $status['remote_version'];
         log_action('Проверка обновлений панели');
     }
 
@@ -34,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isGitRepo) {
         if ($code === 0) {
             log_action('Панель обновлена через git pull');
             flash('Панель обновлена: ' . trim($out));
+            panel_update_refresh();
         } else {
             flash('Ошибка обновления: ' . trim($out), 'error');
         }
@@ -79,7 +78,6 @@ if (is_file($changelogFile)) {
       <table style="margin-top:10px">
         <tr><th>Ветка</th><td><?= h(trim($branch)) ?></td></tr>
         <tr><th>Коммит</th><td><?= h(trim($currentCommit)) ?></td></tr>
-        <tr><th>Репозиторий</th><td><?= h(trim($remoteUrl)) ?></td></tr>
       </table>
     </details>
   <?php endif; ?>

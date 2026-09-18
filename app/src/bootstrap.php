@@ -132,3 +132,43 @@ function panel_version(): string {
     }
     return 'dev';
 }
+
+/**
+ * Кешированная проверка обновлений панели (git fetch + сравнение с origin).
+ * Результат кешируется в файле на $ttl секунд, чтобы не дёргать git
+ * при каждом открытии дашборда. Страница «Обновление» может обновить
+ * кеш немедленно через panel_update_refresh().
+ */
+function panel_update_cache_file(): string {
+    return DATA_DIR . '/update_check.json';
+}
+
+function panel_update_refresh(): array {
+    $isGitRepo = is_dir(REPO_ROOT . '/.git');
+    $result = ['checked_at' => time(), 'is_git' => $isGitRepo, 'behind' => null, 'remote_version' => null];
+
+    if ($isGitRepo) {
+        run('git -C ' . escapeshellarg(REPO_ROOT) . ' fetch --quiet 2>&1');
+        [$log] = run('git -C ' . escapeshellarg(REPO_ROOT) . ' log --oneline HEAD..@{u} 2>&1');
+        $log = trim($log);
+        $result['behind'] = $log === '' ? 0 : count(explode("\n", $log));
+
+        [$branchNow] = run('git -C ' . escapeshellarg(REPO_ROOT) . ' rev-parse --abbrev-ref HEAD 2>&1');
+        [$remoteVer, , $remoteVerCode] = run('git -C ' . escapeshellarg(REPO_ROOT) . ' show origin/' . escapeshellarg(trim($branchNow)) . ':VERSION 2>&1');
+        $result['remote_version'] = $remoteVerCode === 0 ? trim($remoteVer) : null;
+    }
+
+    @file_put_contents(panel_update_cache_file(), json_encode($result));
+    return $result;
+}
+
+function panel_update_status(int $ttl = 300): array {
+    $file = panel_update_cache_file();
+    if (is_file($file)) {
+        $data = json_decode((string)file_get_contents($file), true);
+        if (is_array($data) && isset($data['checked_at']) && (time() - $data['checked_at']) < $ttl) {
+            return $data;
+        }
+    }
+    return panel_update_refresh();
+}
