@@ -48,16 +48,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_dir($logDir)) mkdir($logDir, 0750, true);
         $logFile = mail_install_log_path($logDir, $svc);
 
-        $installCmd = 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ' . $packages[$svc];
-        $enableCmd  = 'sudo systemctl enable --now ' . escapeshellarg($svc);
-        // Всё вместе — в фоне, вывод построчно пишется в лог-файл,
-        // в конце добавляется маркер завершения с кодом возврата apt-get.
-        $chain = "echo '=== " . date('Y-m-d H:i:s') . " ==='; "
-               . "echo '\$ {$installCmd}'; {$installCmd}; code=\$?; "
-               . "echo '\$ {$enableCmd}'; {$enableCmd}; "
-               . "echo '{$DONE_MARKER}'\$code";
+        // sudoers для www-data разрешает только точечные команды (systemctl
+        // start/stop/restart, apt-get без переменных окружения и т.д.) —
+        // "sudo systemctl enable" и "sudo DEBIAN_FRONTEND=... apt-get" не
+        // проходят. Поэтому выполняем весь сценарий одним куском через
+        // уже разрешённый root-хелпер upanel-helper (как в Web Shell):
+        // внутри него env-переменные и systemctl enable работают без ограничений.
+        $pkg = $packages[$svc];
+        $rootScript = "export DEBIAN_FRONTEND=noninteractive; "
+                    . "echo '=== " . date('Y-m-d H:i:s') . " ==='; "
+                    . "echo '\$ apt-get install -y {$pkg}'; apt-get install -y {$pkg}; code=\$?; "
+                    . "echo '\$ systemctl enable --now {$svc}'; systemctl enable --now " . escapeshellarg($svc) . "; "
+                    . "echo '{$DONE_MARKER}'\$code";
+        $privCmd = 'sudo /usr/local/bin/upanel-helper shell ' . escapeshellarg($rootScript);
+
         file_put_contents($logFile, '');
-        run('setsid nohup bash -c ' . escapeshellarg($chain) . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null &');
+        run('setsid nohup bash -c ' . escapeshellarg($privCmd) . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null &');
 
         log_action("apt-get install {$svc} (запущено в фоне)");
         header('Content-Type: application/json');
