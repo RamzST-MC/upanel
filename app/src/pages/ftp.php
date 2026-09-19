@@ -28,6 +28,15 @@ function ftp_vsftpd_config_snippet(string $userConfDir): string {
     return "test -f /etc/vsftpd.conf || exit 0; "
         . "cp -n /etc/vsftpd.conf /etc/vsftpd.conf.upanel-orig 2>/dev/null; "
         . "grep -q '^/usr/sbin/nologin$' /etc/shells || echo /usr/sbin/nologin >> /etc/shells; "
+        // vsftpd.conf's check_shell=NO отключает только внутреннюю проверку самого
+        // vsftpd. Отдельно от неё /etc/pam.d/vsftpd на Debian/Ubuntu обычно содержит
+        // "auth required pam_shells.so" — это ДРУГОЙ, независимый механизм, который
+        // тоже требует shell пользователя в /etc/shells и тоже даёт "530 Login
+        // incorrect", если требование не выполнено. Отключаем и его.
+        . "if [ -f /etc/pam.d/vsftpd ]; then "
+        . "cp -n /etc/pam.d/vsftpd /etc/pam.d/vsftpd.upanel-orig 2>/dev/null; "
+        . "sed -i -E 's/^([[:space:]]*auth[[:space:]]+(requisite|required|sufficient)[[:space:]]+pam_shells\\.so.*)/#\\1/' /etc/pam.d/vsftpd; "
+        . "fi; "
         . "mkdir -p " . escapeshellarg($userConfDir) . "; "
         . "sed -i '/^pasv_enable=/d;/^pasv_min_port=/d;/^pasv_max_port=/d;/^local_enable=/d;/^check_shell=/d;/^pam_service_name=/d;/^user_config_dir=/d;/^chroot_local_user=/d;/^allow_writeable_chroot=/d;/^write_enable=/d' /etc/vsftpd.conf; "
         . "printf '%s\\n' 'local_enable=YES' 'check_shell=NO' 'pam_service_name=vsftpd' "
